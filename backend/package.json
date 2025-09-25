@@ -1,0 +1,28 @@
+{
+  "name": "chatbot",
+  "version": "1.0.0",
+  "description": "DKL Chatbot",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Abdurleone/dklchatbot.git"
+  },
+  "author": "Abdulkadir Yusuf",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/Abdurleone/dklchatbot/issues"
+  },
+  "homepage": "https://github.com/Abdurleone/dklchatbot#readme",
+  "keywords": [],
+  "dependencies": {
+    "axios": "^1.12.2",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "mongoose": "^8.18.2",
+    "socket.io": "^4.8.1"
+  }
+}
