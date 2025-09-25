@@ -66,5 +66,9 @@ io.on('connection', (socket) => {
 });
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
+// Add a route for the root URL
+app.get('/', (req, res) => {
+  res.send('Welcome to DKL Chatbot API!');
+});
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Chatbot server running on port ${PORT}`));
