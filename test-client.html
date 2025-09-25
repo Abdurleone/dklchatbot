@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Chatbot Test</title></head>
+<body>
+  <input id="message" type="text" placeholder="Type a message">
+  <button onclick="sendMessage()">Send</button>
+  <div id="response"></div>
+  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+  <script>
+    const socket = io('http://localhost:3000');
+    socket.on('response', (msg) => {
+      document.getElementById('response').innerText = msg;
+    });
+    function sendMessage() {
+      const msg = document.getElementById('message').value;
+      socket.emit('message', msg);
+    }
+  </script>
+</body>
+</html>
