@@ -157,6 +157,12 @@ ${faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
 
 // Health check
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
+app.get('/', (req, res) => {
+  res.send('Welcome to DKL Chatbot API!');
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Chatbot server running on port ${PORT}`));
+
+// Export app for testing
+module.exports = app;
