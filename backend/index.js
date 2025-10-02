@@ -3,6 +3,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const PORT = process.env.PORT || 3000;
 
+const { translate, detect } = require('libretranslate');
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
@@ -19,16 +21,36 @@ io.on('connection', (socket) => {
 	console.log('User connected:', socket.id);
 	const sessionId = socket.id;
 
+
 	socket.on('message', async (msg) => {
 		try {
-			const prompt = `Classify the intent of this user query for a lab chatbot. Possible intents: "service" (for lab tests/services), "faq" (general questions), "appointment" (booking). Respond with only the intent word. Query: ${msg}`;
+			// Detect language
+			let userLang = 'en';
+			try {
+				const detected = await detect(msg);
+				userLang = detected && detected.length > 0 ? detected[0].language : 'en';
+			} catch (e) {
+				userLang = 'en';
+			}
+
+			let msgForIntent = msg;
+			if (userLang !== 'en') {
+				// Translate to English for intent classification
+				try {
+					msgForIntent = await translate(msg, { from: userLang, to: 'en' });
+				} catch (e) {
+					msgForIntent = msg;
+				}
+			}
+
+			const prompt = `Classify the intent of this user query for a lab chatbot. Possible intents: "service" (for lab tests/services), "faq" (general questions), "appointment" (booking). Respond with only the intent word. Query: ${msgForIntent}`;
 			const result = await model.generateContent(prompt);
 			const intent = await result.response.text().toLowerCase().trim();
 
 			let response;
-			if (intent === 'service' || msg.toLowerCase().includes('test') || msg.toLowerCase().includes('service')) {
+			if (intent === 'service' || msgForIntent.toLowerCase().includes('test') || msgForIntent.toLowerCase().includes('service')) {
 				const services = await Service.find(
-					{ $or: [{ name: { $regex: msg, $options: 'i' } }, { category: { $regex: msg, $options: 'i' } }] },
+					{ $or: [{ name: { $regex: msgForIntent, $options: 'i' } }, { category: { $regex: msgForIntent, $options: 'i' } }] },
 					'name description price'
 				).limit(5);
 				response = services.length
@@ -37,9 +59,9 @@ io.on('connection', (socket) => {
 			} else if (intent === 'faq') {
 				const faqs = await FAQ.find({
 					$or: [
-						{ question: { $regex: msg, $options: 'i' } },
-						{ tags: { $regex: msg, $options: 'i' } },
-						{ category: { $regex: msg, $options: 'i' } },
+						{ question: { $regex: msgForIntent, $options: 'i' } },
+						{ tags: { $regex: msgForIntent, $options: 'i' } },
+						{ category: { $regex: msgForIntent, $options: 'i' } },
 					],
 				}).limit(3);
 				response = faqs.length
@@ -49,15 +71,27 @@ io.on('connection', (socket) => {
 				response = `Intent detected: ${intent}. I'm here to help with lab services—try asking about tests!`;
 			}
 
+					// Translate response back to user's language if needed, with fallback logic
+					let finalResponse = response;
+					let translationFailed = false;
+					if (userLang !== 'en') {
+						try {
+							finalResponse = await translate(response, { from: 'en', to: userLang });
+						} catch (e) {
+							finalResponse = response + '\n\n[Sorry, I could not translate the response. Showing in English.]';
+							translationFailed = true;
+						}
+					}
+
 			let conversation = await Conversation.findOne({ sessionId });
 			if (!conversation) {
 				conversation = new Conversation({ sessionId, messages: [] });
 			}
 			conversation.messages.push({ sender: 'user', text: msg });
-			conversation.messages.push({ sender: 'bot', text: response });
+			conversation.messages.push({ sender: 'bot', text: finalResponse });
 			await conversation.save();
 
-			socket.emit('response', response);
+			socket.emit('response', finalResponse);
 		} catch (error) {
 			console.error('Error processing message:', error.message);
 			socket.emit('response', 'Sorry, an error occurred. Please try again.');
