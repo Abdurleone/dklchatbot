@@ -1,11 +1,11 @@
 const mongoose = require('mongoose');
 
 const conversationSchema = new mongoose.Schema({
-  userId: { type: String }, // Optional: can be null for anonymous
-  sessionId: { type: String }, // For anonymous sessions
+  userId: { type: String },
+  sessionId: { type: String },
   messages: [
     {
-      sender: { type: String, required: true }, // 'user' or 'bot'
+      sender: { type: String, required: true },   text: { type: String, required: true },
       text: { type: String, required: true },
       timestamp: { type: Date, default: Date.now }
     }
