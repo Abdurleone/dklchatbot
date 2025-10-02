@@ -1,3 +1,47 @@
+const jwt = require('jsonwebtoken');
+const User = require('./models/user');
+// User registration
+app.post('/auth/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    if (!username || !email || !password) return res.status(400).json({ error: 'All fields required' });
+    const user = new User({ username, email, password });
+    await user.save();
+    res.status(201).json({ message: 'User registered' });
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ error: 'Username or email already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// User login
+app.post('/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ username });
+    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+    const token = jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
 // Endpoint: Get conversation history by sessionId
 app.get('/conversations/:sessionId', async (req, res) => {
   try {
