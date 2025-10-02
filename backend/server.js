@@ -1,3 +1,23 @@
+// Endpoint: Get conversation history by sessionId
+app.get('/conversations/:sessionId', async (req, res) => {
+  try {
+    const convo = await Conversation.findOne({ sessionId: req.params.sessionId });
+    if (!convo) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(convo);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin endpoint: Get all conversations
+app.get('/admin/conversations', requireApiKey, async (req, res) => {
+  try {
+    const convos = await Conversation.find().limit(100).sort({ startedAt: -1 });
+    res.json(convos);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // Simple API key middleware for admin endpoints
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'changeme';
 function requireApiKey(req, res, next) {
@@ -6,7 +26,6 @@ function requireApiKey(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
-}
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -35,8 +54,9 @@ const serviceSchema = new mongoose.Schema({
 });
 const Service = mongoose.model('Service', serviceSchema);
 
-// Import FAQ model
+// Import FAQ and Conversation models
 const FAQ = require('./models/faq');
+const Conversation = require('./models/conversation');
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
@@ -63,59 +83,19 @@ app.post('/admin/faqs', requireApiKey, async (req, res) => {
   }
 });
 
-// Get all FAQs
-app.get('/admin/faqs', requireApiKey, async (req, res) => {
-  try {
-    const faqs = await FAQ.find();
-    res.json(faqs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Get FAQ by ID
-app.get('/admin/faqs/:id', requireApiKey, async (req, res) => {
-  try {
-    const faq = await FAQ.findById(req.params.id);
-    if (!faq) return res.status(404).json({ error: 'FAQ not found' });
-    res.json(faq);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Update FAQ by ID
-app.put('/admin/faqs/:id', requireApiKey, async (req, res) => {
-  try {
-    const faq = await FAQ.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!faq) return res.status(404).json({ error: 'FAQ not found' });
-    res.json(faq);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// Delete FAQ by ID
-app.delete('/admin/faqs/:id', requireApiKey, async (req, res) => {
-  try {
-    const faq = await FAQ.findByIdAndDelete(req.params.id);
-    if (!faq) return res.status(404).json({ error: 'FAQ not found' });
-    res.json({ message: 'FAQ deleted' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Socket.io handler
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
+
+  // Use socket.id as sessionId for anonymous users
+  let sessionId = socket.id;
 
   socket.on('message', async (msg) => {
     try {
       // Step 1: Use Gemini to classify intent
       const prompt = `Classify the intent of this user query for a lab chatbot. Possible intents: "service" (for lab tests/services), "faq" (general questions), "appointment" (booking). Respond with only the intent word. Query: ${msg}`;
       const result = await model.generateContent(prompt);
-      const intent = await result.response.text().toLowerCase().trim(); // e.g., "service"
+      const intent = await result.response.text().toLowerCase().trim();
 
       // Step 2: Query MongoDB based on intent
       let response;
@@ -128,7 +108,6 @@ io.on('connection', (socket) => {
           ? `Here are matching services:\n${services.map((s) => `${s.name}: ${s.description} (KES ${s.price})`).join('\n')}`
           : 'No services found. Try searching for a specific test like "blood test".';
       } else if (intent === 'faq') {
-        // Search FAQ collection for matching question or tags
         const faqs = await FAQ.find({
           $or: [
             { question: { $regex: msg, $options: 'i' } },
@@ -137,14 +116,22 @@ io.on('connection', (socket) => {
           ]
         }).limit(3);
         response = faqs.length
-          ? `Here are some answers:
-${faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
+          ? `Here are some answers:\n${faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
           : 'No matching FAQ found. Please ask another question or contact support.';
       } else {
         response = `Intent detected: ${intent}. I'm here to help with lab services—try asking about tests!`;
       }
 
-      // Step 3: Send response
+      // Step 3: Log conversation to MongoDB
+      let conversation = await Conversation.findOne({ sessionId });
+      if (!conversation) {
+        conversation = new Conversation({ sessionId, messages: [] });
+      }
+      conversation.messages.push({ sender: 'user', text: msg });
+      conversation.messages.push({ sender: 'bot', text: response });
+      await conversation.save();
+
+      // Step 4: Send response
       socket.emit('response', response);
     } catch (error) {
       console.error('Error processing message:', error.message);
@@ -154,7 +141,6 @@ ${faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
 
   socket.on('disconnect', () => console.log('User disconnected:', socket.id));
 });
-
 // Health check
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 app.get('/', (req, res) => {
@@ -165,4 +151,6 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Chatbot server running on port ${PORT}`));
 
 // Export app for testing
+module.exports = app;
+}
 module.exports = app;
